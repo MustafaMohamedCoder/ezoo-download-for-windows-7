@@ -1,0 +1,6 @@
+{
+  "name": "Ezoo Win7 & Release Hub",
+  "description": "أداة متكاملة لتهيئة وتعديل تطبيق إيزو لويندوز 7 مع إيقاف التحديث التلقائي وبناء ملفات التثبيت تلقائياً في GitHub Releases",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
