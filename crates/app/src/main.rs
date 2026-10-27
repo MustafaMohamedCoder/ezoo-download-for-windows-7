@@ -330,7 +330,7 @@ fn main() -> anyhow::Result<()> {
 
     wire_main(&ui);
     // a new version of the program itself: from GitHub, installed silently
-    update::spawn(&ui.ctx);
+    // update::spawn(&ui.ctx); // DISABLED FOR WINDOWS 7
     wire_add(&ui);
     wire_batch(&ui);
     wire_complete(&ui);

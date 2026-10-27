@@ -1,0 +1,87 @@
+name: Build & Release for Windows 7
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-win7:
+    name: Build Ezoo Download (Windows 7 Compatible)
+    runs-on: windows-2022
+
+    steps:
+      - name: 📥 استنساخ المستودع (Checkout Code)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 🦀 تثبيت بيئة Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: ⚙️ تطبيق إعدادات التوافقية مع ويندوز 7
+        shell: bash
+        run: |
+          mkdir -p .cargo
+          cat << 'CONF' > .cargo/config.toml
+          [target.x86_64-pc-windows-msvc]
+          rustflags = [
+            "-C", "target-feature=+crt-static",
+            "-C", "link-arg=/SUBSYSTEM:WINDOWS,6.01"
+          ]
+          CONF
+
+      - name: 📦 بناء النسخة النهائية (Release)
+        env:
+          RUSTFLAGS: "-C target-feature=+crt-static -C link-arg=/SUBSYSTEM:WINDOWS,6.01"
+          SLINT_BACKEND: "winit-software"
+        run: |
+          cargo build --release --bin EzooDownload
+
+      - name: 🛠️ تجهيز الحزمة المحمولة (Portable Package)
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force dist, dist\portable | Out-Null
+          Copy-Item target\release\EzooDownload.exe dist\portable\ -Force
+          
+          if (Test-Path extension) {
+            Copy-Item -Recurse extension dist\portable\ -Force
+          }
+
+          @"
+          @echo off
+          set SLINT_BACKEND=winit-software
+          start "" "%~dp0EzooDownload.exe"
+          "@ | Out-File -Encoding ASCII dist\portable\Run-Win7.bat
+
+          Compress-Archive -Path dist\portable\* -DestinationPath dist\EzooDownload-Windows7-Portable.zip -Force
+
+      - name: 🚀 إنشاء GitHub Release ورفع النسخة النهائية تلقائياً
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+        with:
+          name: 'Ezoo Download (نسخة ويندوز 7 بدون تحديث تلقائي)'
+          tag_name: 'v1.0.8-win7'
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          body: |
+            ## 🌟 نسخة Ezoo Download المتوافقة مع Windows 7
+            
+            - 🛡️ **إلغاء التحديث التلقائي**: تم تعطيل auto-update بالكامل لضمان عدم تعطل البرنامج.
+            - 💻 **دعم Windows 7 SP1**: تم البناء برقم نظام فرعي (Subsystem 6.01) ودمج الـ CRT استاتيكياً.
+            - 🎨 **مشغل الرسوميات**: يعمل بنمط البرمجيات المتوافق مع كافة كروت الشاشة القديمة.
+          files: |
+            dist/EzooDownload-Windows7-Portable.zip
+            target/release/EzooDownload.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
