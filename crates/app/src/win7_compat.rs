@@ -1,23 +1,49 @@
-//! Windows 7 Compatibility Layer
+//! Windows 7 Compatibility Layer (Static In-Binary Polyfill)
 //!
-//! Statically embeds Windows 8+ synchronization APIs (WaitOnAddress,
-//! WakeByAddressSingle, WakeByAddressAll) and ProcessPrng directly into
-//! EzooDownload.exe, so the standalone .exe runs natively on Windows 7
-//! without requiring any external DLLs.
+//! Provides drop-in, zero-dependency implementations of Windows 8, 8.1, and 10
+//! APIs that are missing on Windows 7 SP1:
+//! - GetSystemTimePreciseAsFileTime (Windows 8+) -> mapped to GetSystemTimeAsFileTime
+//! - WaitOnAddress / WakeByAddressSingle / WakeByAddressAll (Windows 8+)
+//! - ProcessPrng (Windows 10+) -> mapped to RtlGenRandom (SystemFunction036)
+//! - SetThreadDescription / GetThreadDescription (Windows 10+)
+//! - CreateFile2 (Windows 8+) -> mapped to CreateFileW
+//! - CoIncrementMTAUsage (Windows 8+)
+//!
+//! Because these are defined with #[no_mangle] inside EzooDownload.exe, the MSVC
+//! linker resolves them locally inside the binary itself. They are never imported
+//! from KERNEL32.dll, advapi32.dll, or api-ms-win-core-*.dll, allowing the standalone
+//! EzooDownload.exe to run natively on Windows 7 SP1!
 
 #[cfg(windows)]
 pub mod imp {
     use std::ffi::c_void;
 
-    type BOOL = i32;
-    type DWORD = u32;
-    type PVOID = *mut c_void;
-    type ULONG = u32;
-    type BOOLEAN = u8;
+    pub type BOOL = i32;
+    pub type DWORD = u32;
+    pub type PVOID = *mut c_void;
+    pub type ULONG = u32;
+    pub type BOOLEAN = u8;
+    pub type HRESULT = i32;
+
+    #[repr(C)]
+    pub struct FILETIME {
+        pub dwLowDateTime: u32,
+        pub dwHighDateTime: u32,
+    }
 
     #[link(name = "kernel32")]
     extern "system" {
         fn Sleep(dwMilliseconds: DWORD);
+        fn GetSystemTimeAsFileTime(lpSystemTimeAsFileTime: *mut FILETIME);
+        fn CreateFileW(
+            lpFileName: *const u16,
+            dwDesiredAccess: DWORD,
+            dwShareMode: DWORD,
+            lpSecurityAttributes: PVOID,
+            dwCreationDisposition: DWORD,
+            dwFlagsAndAttributes: DWORD,
+            hTemplateFile: PVOID,
+        ) -> PVOID;
     }
 
     #[link(name = "advapi32")]
@@ -26,6 +52,17 @@ pub mod imp {
         fn RtlGenRandom(pbBuffer: PVOID, dwLen: ULONG) -> BOOLEAN;
     }
 
+    /// Windows 8+ API missing on Windows 7 KERNEL32.dll
+    #[no_mangle]
+    pub unsafe extern "system" fn GetSystemTimePreciseAsFileTime(
+        lpSystemTimeAsFileTime: *mut FILETIME,
+    ) {
+        if !lpSystemTimeAsFileTime.is_null() {
+            GetSystemTimeAsFileTime(lpSystemTimeAsFileTime);
+        }
+    }
+
+    /// Windows 8+ API missing on Windows 7 KERNEL32.dll
     #[no_mangle]
     pub unsafe extern "system" fn WaitOnAddress(
         address: *mut c_void,
@@ -58,12 +95,15 @@ pub mod imp {
         1
     }
 
+    /// Windows 8+ API missing on Windows 7 KERNEL32.dll
     #[no_mangle]
     pub unsafe extern "system" fn WakeByAddressSingle(_address: *mut c_void) {}
 
+    /// Windows 8+ API missing on Windows 7 KERNEL32.dll
     #[no_mangle]
     pub unsafe extern "system" fn WakeByAddressAll(_address: *mut c_void) {}
 
+    /// Windows 10+ API missing on Windows 7 bcryptprimitives.dll
     #[no_mangle]
     pub unsafe extern "system" fn ProcessPrng(pb_buffer: *mut u8, cb_buffer: usize) -> BOOL {
         if pb_buffer.is_null() {
@@ -71,5 +111,49 @@ pub mod imp {
         }
         let res = RtlGenRandom(pb_buffer as PVOID, cb_buffer as ULONG);
         if res != 0 { 1 } else { 0 }
+    }
+
+    /// Windows 10+ API missing on Windows 7 KERNEL32.dll
+    #[no_mangle]
+    pub unsafe extern "system" fn SetThreadDescription(
+        _hThread: PVOID,
+        _lpThreadDescription: *const u16,
+    ) -> HRESULT {
+        0 // S_OK
+    }
+
+    /// Windows 10+ API missing on Windows 7 KERNEL32.dll
+    #[no_mangle]
+    pub unsafe extern "system" fn GetThreadDescription(
+        _hThread: PVOID,
+        _ppszThreadDescription: *mut *mut u16,
+    ) -> HRESULT {
+        -2147467263 // E_NOTIMPL
+    }
+
+    /// Windows 8+ API missing on Windows 7 KERNEL32.dll
+    #[no_mangle]
+    pub unsafe extern "system" fn CreateFile2(
+        lpFileName: *const u16,
+        dwDesiredAccess: DWORD,
+        dwShareMode: DWORD,
+        dwCreationDisposition: DWORD,
+        _pCreateExParams: PVOID,
+    ) -> PVOID {
+        CreateFileW(
+            lpFileName,
+            dwDesiredAccess,
+            dwShareMode,
+            std::ptr::null_mut(),
+            dwCreationDisposition,
+            128, // FILE_ATTRIBUTE_NORMAL
+            std::ptr::null_mut(),
+        )
+    }
+
+    /// Windows 8+ API missing on Windows 7 combase.dll / ole32.dll
+    #[no_mangle]
+    pub unsafe extern "system" fn CoIncrementMTAUsage(_pCookie: PVOID) -> HRESULT {
+        0 // S_OK
     }
 }
