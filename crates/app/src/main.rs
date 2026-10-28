@@ -185,6 +185,10 @@ fn install_crash_log() {
 }
 
 fn main() -> anyhow::Result<()> {
+    // Windows 7 compatibility: ensure software rendering backend
+    if std::env::var_os("SLINT_BACKEND").is_none() {
+        std::env::set_var("SLINT_BACKEND", "winit-software");
+    }
     install_crash_log();
     // started by Windows at sign-in: stay next to the clock, no window
     let background = std::env::args().any(|a| a == "--background");

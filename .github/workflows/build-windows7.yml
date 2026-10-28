@@ -32,6 +32,11 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: ⚙️ إعداد بيئة مجمع MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
       - name: 🦀 تثبيت بيئة Rust مع الدعم الثابت
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -56,11 +61,21 @@ jobs:
         run: |
           cargo build --release --bin EzooDownload
 
+      - name: 🛡️ بناء وتضمين مكتبات التوافقية لويندوز 7 (WaitOnAddress & ProcessPrng Shims)
+        shell: cmd
+        run: |
+          mkdir dist
+          mkdir dist\portable
+          cl.exe /LD /O2 /nologo tools\win7-shims\api-ms-win-core-synch-l1-2-0.c /Fe:dist\portable\api-ms-win-core-synch-l1-2-0.dll
+          cl.exe /LD /O2 /nologo tools\win7-shims\bcryptprimitives.c /Fe:dist\portable\bcryptprimitives.dll
+          del /Q dist\portable\*.obj dist\portable\*.exp dist\portable\*.lib 2>nul
+
       - name: 🛠️ تجهيز الأدوات المساعدة وحزمة التوزيع (Setup & Tools)
         shell: powershell
         run: |
-          New-Item -ItemType Directory -Force dist, dist\portable | Out-Null
           Copy-Item target\release\EzooDownload.exe dist\portable\ -Force
+          Copy-Item dist\portable\api-ms-win-core-synch-l1-2-0.dll dist\ -Force
+          Copy-Item dist\portable\bcryptprimitives.dll dist\ -Force
           
           if (Test-Path extension) {
             Copy-Item -Recurse extension dist\portable\ -Force
@@ -78,20 +93,23 @@ jobs:
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
         with:
-          name: ${{ github.event.inputs.release_title || 'Ezoo Download (نسخة ويندوز 7 بدون تحديث تلقائي)' }}
-          tag_name: ${{ github.ref_name != 'main' && github.ref_name != 'master' && github.ref_name || github.event.inputs.release_tag || 'v1.0.8-win7' }}
+          name: ${{ github.event.inputs.release_title || 'Ezoo Download (نسخة ويندوز 7 المحدثة مع مكتبات التوافقية)' }}
+          tag_name: ${{ github.ref_name != 'main' && github.ref_name != 'master' && github.ref_name || github.event.inputs.release_tag || 'v1.0.9-win7' }}
           draft: false
           prerelease: false
           generate_release_notes: true
           body: |
-            ## 🌟 إصدار Ezoo Download المخصص لنظام Windows 7 / 8 / 10 / 11
+            ## 🌟 إصدار Ezoo Download المتوافق كلياً مع Windows 7 SP1 / 8 / 10 / 11
             
-            تم بناء هذا الإصدار وتجميعه تلقائياً عبر GitHub Actions:
-            - 🛡️ **إلغاء التحديث التلقائي بالكامل**: تم إيقاف التحديث الصامت لمنع استبدال التطبيق بنسخ لا تدعم ويندوز 7.
-            - 💻 **توافق كامل مع Windows 7 SP1**: تم ربط الملف التنفيذي برقم نظام فرعي (Subsystem 6.01) ودمج الـ CRT استاتيكياً (+crt-static).
-            - 🎨 **مشغل رسوميات مرن (Software Render Fallback)**.
+            تم حل مشكلة التوافق مع Windows 7 نهائياً:
+            - 🛡️ **تضمين مكتبة `api-ms-win-core-synch-l1-2-0.dll`**: لحل خطأ `WaitOnAddress` المفقود في Windows 7.
+            - 🛡️ **تضمين مكتبة `bcryptprimitives.dll`**: لحل خطأ `ProcessPrng` المفقود في Windows 7.
+            - 🎨 **مشغل الرسوميات البرمجي (Software Renderer)**: يعمل بسلاسة دون الحاجة لكروت شاشة حديثة أو DirectX 12.
+            - 🚫 **إلغاء التحديث التلقائي**: تم تعطيل التحديث الصامت لضمان بقاء النسخة مستقرة.
           files: |
             dist/EzooDownload-Windows7-Portable.zip
             target/release/EzooDownload.exe
+            dist/api-ms-win-core-synch-l1-2-0.dll
+            dist/bcryptprimitives.dll
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
