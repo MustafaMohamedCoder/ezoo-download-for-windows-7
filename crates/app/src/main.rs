@@ -20,6 +20,7 @@ mod sound;
 mod tray;
 mod update;
 mod winfx;
+mod win7_compat;
 
 use slint::{ComponentHandle, Model, ModelRc, SharedString, Timer, TimerMode, VecModel, Weak};
 use std::cell::{Cell, RefCell};

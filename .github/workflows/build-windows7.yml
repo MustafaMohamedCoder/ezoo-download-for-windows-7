@@ -10,13 +10,13 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: 'رقم الإصدار (Release Tag مثل v1.0.8-win7)'
+        description: 'رقم الإصدار (Release Tag مثل v1.0.9-win7)'
         required: false
-        default: 'v1.0.8-win7'
+        default: 'v1.0.9-win7'
       release_title:
         description: 'عنوان الإصدار'
         required: false
-        default: 'Ezoo Download v1.0.8 - Windows 7 / 8 / 10 / 11 Ready'
+        default: 'Ezoo Download v1.0.9 - Windows 7 / 8 / 10 / 11 Ready'
 
 permissions:
   contents: write
@@ -31,11 +31,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-      - name: ⚙️ إعداد بيئة مجمع MSVC
-        uses: ilammy/msvc-dev-cmd@v1
-        with:
-          arch: x64
 
       - name: 🦀 تثبيت بيئة Rust مع الدعم الثابت
         uses: dtolnay/rust-toolchain@stable
@@ -61,55 +56,46 @@ jobs:
         run: |
           cargo build --release --bin EzooDownload
 
-      - name: 🛡️ بناء وتضمين مكتبات التوافقية لويندوز 7 (WaitOnAddress & ProcessPrng Shims)
-        shell: cmd
-        run: |
-          mkdir dist
-          mkdir dist\portable
-          cl.exe /LD /O2 /nologo tools\win7-shims\api-ms-win-core-synch-l1-2-0.c /Fe:dist\portable\api-ms-win-core-synch-l1-2-0.dll
-          cl.exe /LD /O2 /nologo tools\win7-shims\bcryptprimitives.c /Fe:dist\portable\bcryptprimitives.dll
-          del /Q dist\portable\*.obj dist\portable\*.exp dist\portable\*.lib 2>nul
-
-      - name: 🛠️ تجهيز الأدوات المساعدة وحزمة التوزيع (Setup & Tools)
+      - name: 🛠️ تجهيز ملفات التوزيع وحزمة التثبيت (Setup & Portable)
         shell: powershell
         run: |
-          Copy-Item target\release\EzooDownload.exe dist\portable\ -Force
-          Copy-Item dist\portable\api-ms-win-core-synch-l1-2-0.dll dist\ -Force
-          Copy-Item dist\portable\bcryptprimitives.dll dist\ -Force
+          New-Item -ItemType Directory -Force dist, dist\portable | Out-Null
+          
+          # نسخ ملف exe المستقل مباشرة
+          Copy-Item target\release\EzooDownload.exe dist\EzooDownload.exe -Force
+          Copy-Item target\release\EzooDownload.exe dist\portable\EzooDownload.exe -Force
           
           if (Test-Path extension) {
             Copy-Item -Recurse extension dist\portable\ -Force
           }
 
+          # إنشاء ملف تشغيل مساعد لويندوز 7
           @"
           @echo off
           set SLINT_BACKEND=winit-software
           start "" "%~dp0EzooDownload.exe"
           "@ | Out-File -Encoding ASCII dist\portable\Run-Win7.bat
 
+          # ضغط النسخة المحمولة
           Compress-Archive -Path dist\portable\* -DestinationPath dist\EzooDownload-Windows7-Portable.zip -Force
 
       - name: 🚀 رفع النسخة النهائية تلقائياً إلى GitHub Releases
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
         with:
-          name: ${{ github.event.inputs.release_title || 'Ezoo Download (نسخة ويندوز 7 المحدثة مع مكتبات التوافقية)' }}
+          name: ${{ github.event.inputs.release_title || 'Ezoo Download (نسخة exe المستقلة المتوافقة كلياً مع ويندوز 7)' }}
           tag_name: ${{ github.ref_name != 'main' && github.ref_name != 'master' && github.ref_name || github.event.inputs.release_tag || 'v1.0.9-win7' }}
           draft: false
           prerelease: false
           generate_release_notes: true
           body: |
-            ## 🌟 إصدار Ezoo Download المتوافق كلياً مع Windows 7 SP1 / 8 / 10 / 11
+            ## 🌟 إصدار Ezoo Download المتوافق مع Windows 7 SP1 / 8 / 10 / 11
             
-            تم حل مشكلة التوافق مع Windows 7 نهائياً:
-            - 🛡️ **تضمين مكتبة `api-ms-win-core-synch-l1-2-0.dll`**: لحل خطأ `WaitOnAddress` المفقود في Windows 7.
-            - 🛡️ **تضمين مكتبة `bcryptprimitives.dll`**: لحل خطأ `ProcessPrng` المفقود في Windows 7.
-            - 🎨 **مشغل الرسوميات البرمجي (Software Renderer)**: يعمل بسلاسة دون الحاجة لكروت شاشة حديثة أو DirectX 12.
-            - 🚫 **إلغاء التحديث التلقائي**: تم تعطيل التحديث الصامت لضمان بقاء النسخة مستقرة.
+            - 🛡️ **نسخة EXE مستقلة بالكامل (Standalone)**: تم دمج دوال التوافقية ومحاكاة `WaitOnAddress` و `ProcessPrng` استاتيكياً داخل ملف `EzooDownload.exe` نفسه، ليعمل بمفرده على ويندوز 7 دون الحاجة لأي ملفات DLL خارجية!
+            - 🎨 **مشغل الرسوميات البرمجي (Software Renderer Fallback)**: مدمج في الكود ليعمل على كافة كروت الشاشة القديمة.
+            - 🚫 **إلغاء التحديثات التلقائية**: تم تعطيل التحديث الصامت نهائياً لمنع استبدال التطبيق.
           files: |
+            dist/EzooDownload.exe
             dist/EzooDownload-Windows7-Portable.zip
-            target/release/EzooDownload.exe
-            dist/api-ms-win-core-synch-l1-2-0.dll
-            dist/bcryptprimitives.dll
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
